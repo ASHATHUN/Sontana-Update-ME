@@ -21,9 +21,9 @@ class PostController extends Controller
         if ($request->expectsJson()) {
             // ถ้าเป็นการเรียกแบบ API ให้คืนข้อมูลในรูปแบบ JSON
             $posts = Post::with(['user', 'category', 'comments', 'likes', 'attachments'])
-            ->when($category_id, function ($query) use ($category_id) {
-                return $query->where('category_id', $category_id); // กรองตาม category_id
-            })
+                ->when($category_id, function ($query) use ($category_id) {
+                    return $query->where('category_id', $category_id); // กรองตาม category_id
+                })
                 ->orderBy('id', $sort) // การจัดลำดับตาม id
                 ->get();
 
@@ -32,9 +32,9 @@ class PostController extends Controller
 
         // ถ้าเป็นการเรียกจาก Inertia ให้ส่งไปยัง React component
         $posts = Post::with(['user', 'category', 'comments', 'likes', 'attachments'])
-        ->when($category_id, function ($query) use ($category_id) {
-            return $query->where('category_id', $category_id); // กรองตาม category_id
-        })
+            ->when($category_id, function ($query) use ($category_id) {
+                return $query->where('category_id', $category_id); // กรองตาม category_id
+            })
             ->orderBy('id', $sort) // การจัดลำดับตาม id
             ->get();
 
@@ -46,9 +46,12 @@ class PostController extends Controller
             'categories' => $categories,
             'selectedCategory' => $selectedCategory,
             'currentSort' => $sort, // ส่งค่าลำดับปัจจุบันไปยัง React component
+            'flash' => [
+            'success' => session('success'),
+            'error' => session('error')
+        ]
         ]);
     }
-
 
     public function create()
     {
@@ -62,44 +65,47 @@ class PostController extends Controller
 
     public function store(Request $request)
     {
+        try {
+            Log::info($request->all());
 
-        Log::info($request->all());
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'content' => 'required|string',
+                'category_id' => 'required|exists:categories,id',
+                'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048', // ✅ ตรวจสอบไฟล์รูปภาพ
+            ]);
 
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'content' => 'required|string',
-            'category_id' => 'required|exists:categories,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048', // ✅ ตรวจสอบไฟล์รูปภาพ
-        ]);
+            // ✅ ตรวจสอบไฟล์รูปภาพก่อนบันทึก
+            if ($request->hasFile('image')) {
+                $validated['image'] = $request->file('image')->store('postimagenew', 'public');
+            }
 
-        // ✅ ตรวจสอบไฟล์รูปภาพก่อนบันทึก
-        if ($request->hasFile('image')) {
-            $validated['image'] = $request->file('image')->store('postimagenew', 'public');
+            DB::transaction(function () use ($validated) {
+                Log::info('Insert data into post table:', [
+                    'user_id' => auth()->id(),
+                    'title' => $validated['title'],
+                    'content' => $validated['content'],
+                    'category_id' => $validated['category_id'],
+                    'image' => $validated['image'] ?? null,
+                    'status' => 'active',
+                ]);
+
+                DB::table('posts')->insert([
+                    'user_id' => auth()->id(),
+                    'title' => $validated['title'],
+                    'content' => $validated['content'],
+                    'category_id' => $validated['category_id'],
+                    'image' => $validated['image'] ?? null,
+                    'status' => 'active',
+                ]);
+            });
+
+            return redirect()->route('post.index')->with('success', 'โพสต์ถูกสร้างเรียบร้อยแล้ว!');
+        } catch (\Exception $e) {
+            Log::error('Post creation failed: ' . $e->getMessage());
+            return redirect()->route('post.index')->with('error', 'Post creation failed');
         }
-
-        DB::transaction(function () use ($validated) {
-            Log::info('Insert data into post table:', [
-                'user_id' => auth()->id(),
-                'title' => $validated['title'],
-                'content' => $validated['content'],
-                'category_id' => $validated['category_id'],
-                'image' => $validated['image'] ?? null,
-                'status' => 'active',
-            ]);
-
-            DB::table('posts')->insert([
-                'user_id' => auth()->id(),
-                'title' => $validated['title'],
-                'content' => $validated['content'],
-                'category_id' => $validated['category_id'],
-                'image' => $validated['image'] ?? null,
-                'status' => 'active',
-            ]);
-        });
-
-        return redirect('/sontana/posts')->with('success', 'Post created!');
     }
-
 
     public function show($id)
     {
@@ -126,8 +132,10 @@ class PostController extends Controller
             'categories' => $categories
         ]);
     }
+
     public function update(Request $request, $id)
     {
+        try {
         // Validate request
         $validated = $request->validate([
             'title' => 'required|string|max:255',
@@ -136,7 +144,7 @@ class PostController extends Controller
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
         ]);
 
-        try {
+        
             // หาข้อมูลโพสต์ที่ต้องการอัปเดต
             $post = Post::findOrFail($id);
 
@@ -158,12 +166,12 @@ class PostController extends Controller
                 'category_id' => $validated['category_id'],
                 'image' => $post->image, // ใช้ค่า image ที่อัปโหลดใหม่
             ]);
+
+            return redirect()->route('post.index')->with('success', 'โพสต์ถูกสร้างเรียบร้อยแล้ว!');
         } catch (\Exception $e) {
             Log::error('Post update failed: ' . $e->getMessage());
-            return redirect('/sontana/posts')->with('error', 'Post update failed');
+            return redirect()->route('post.index')->with('error', 'Post update failed');
         }
-
-        return redirect('/sontana/posts')->with('success', 'Post updated!');
     }
 
     public function destroy($id)
@@ -176,6 +184,4 @@ class PostController extends Controller
 
         return redirect()->route('post.index')->with('success', 'Post deleted successfully!');
     }
-
-
 }

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, usePage } from "@inertiajs/react";
 import SideNavFront from "@/Components/SideNavBarFront";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
+import FlashMessage from "@/Components/FlashMessage";
 
 export default function PostIndex() {
     const { posts, categories, currentSort, selectedCategory } =
@@ -16,9 +17,16 @@ export default function PostIndex() {
             selectedCategory?.id || ""
         }`;
     };
+    const { props } = usePage(); // ดึงข้อมูล props จากเซิร์ฟเวอร์
+        const flash = props.flash || {}; // ข้อความ Flash ที่ส่งมาจาก Controller
+    
+
 
     return (
         <AuthenticatedLayout>
+        <FlashMessage flash={flash}/>
+        
+
             {/* ปุ่มสร้างโพสต์ */}
             <Link
                 href={route("post.create")}
@@ -26,6 +34,7 @@ export default function PostIndex() {
             >
                 + Create Post
             </Link>
+            
             {/* ปุ่มสลับการเรียงลำดับโพสต์ */}
             <button
                 onClick={handleSortChange}
@@ -42,6 +51,7 @@ export default function PostIndex() {
                     />
 
                     <div className="bg-white p-6 mt-5 rounded-lg shadow-md col-span-3">
+                
                         <h1 className="text-2xl font-bold text-gray-800 mb-6">
                             Blog Posts
                         </h1>
